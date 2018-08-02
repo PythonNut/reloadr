@@ -4,8 +4,7 @@
 
 from os.path import dirname, abspath
 import inspect
-import redbaron
-from baron.parser import ParsingError
+import parso
 import threading
 import types
 from time import sleep
@@ -17,6 +16,7 @@ from watchdog.events import FileSystemEventHandler
 __author__ = "Hugo Herter"
 __version__ = '0.3.3'
 
+class ParsingError(Exception): pass
 
 def get_new_source(target, kind, filepath=None):
     """Get the new source code of the target if given kind ('class' or 'def').
@@ -26,11 +26,29 @@ def get_new_source(target, kind, filepath=None):
     which the target has been loaded.
     """
     assert kind in ('class', 'def')
+    if kind == 'class':
+        kind_class = parso.python.tree.Class
+    else:
+        kind_class = parso.python.tree.Function
 
+    grammar = parso.load_grammar()
     filepath = filepath or inspect.getsourcefile(target)
-    red = redbaron.RedBaron(open(filepath).read())
-    # dumps() returns Python code as a string
-    return red.find(kind, target.__name__).dumps()
+    with open(filepath) as f:
+        parse = grammar.parse(f.read())
+
+    errors = grammar.iter_errors(parse)
+    if errors:
+        raise ParsingError(
+            '\n'.join(err.message for err in errors)
+        )
+
+    for child in parse.children:
+        if child.type == 'decorated':
+            obj = child.children[1]
+            if isinstance(obj, kind_class) and obj.name.value == target.__name__:
+                return obj.get_code()
+
+    raise ValueError("function or class not found")
 
 
 def reload_target(target, kind, filepath=None):
@@ -50,7 +68,7 @@ def reload_target(target, kind, filepath=None):
     exec(source, module.__dict__, locals_)
     # The result is expected to be decorated with @reloadr, so we return
     # ._target, which corresponds to the class itself and not the Reloadr class
-    return locals_[target.__name__]._target
+    return locals_[target.__name__]
 
 
 def reload_class(target):
@@ -146,7 +164,8 @@ class FuncReloadr(GenericReloadr):
             self._target = reload_function(self._target, self._filepath)
         except ParsingError as error:
             print('ParsingError', error)
-
+        except ValueError as error:
+            print('ValueError', error)
 
 def reloadr(target):
     "Main decorator, forwards the target to the appropriate class."

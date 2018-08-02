@@ -24,7 +24,7 @@ setup(name='Reloadr',
       scripts=['reloadr.py'],
       data_files=[],
       install_requires=[
-          'redbaron',
+          'parso',
           'watchdog',
           ],
       license='LGPLv3',
