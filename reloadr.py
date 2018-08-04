@@ -39,7 +39,7 @@ def get_new_source(target, kind, filepath=None):
     errors = grammar.iter_errors(parse)
     if errors:
         raise ParsingError(
-            '\n'.join(err.message for err in errors)
+            '\n'.join(f'{err.start_pos}: {err.message}' for err in errors)
         )
 
     for child in parse.children:
